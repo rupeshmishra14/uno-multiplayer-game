@@ -1,0 +1,224 @@
+.gameContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  background-color: #f0f0f0;
+  min-height: 100vh;
+}
+
+.gameBoard {
+  background-color: white;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-width: 1200px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.gameInfo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.gameInfo p {
+  margin: 10px;
+}
+
+.topCard {
+  width: 100px;
+  height: 150px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 20px;
+  font-weight: bold;
+  border: 2px solid #000000;
+  border-radius: 10px;
+  margin: 10px auto;
+}
+
+.playerHandContainer {
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.playerHand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.card {
+  width: 70px;
+  height: 105px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 14px;
+  font-weight: bold;
+  background-color: #ffffff;
+  border: 2px solid #000000;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.cardContent {
+  text-align: center;
+  width: 100%;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.drawButton, .unoButton {
+  padding: 10px 20px;
+  font-size: 16px;
+  font-weight: bold;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.drawButton {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.drawButton:hover {
+  background-color: #45a049;
+}
+
+.unoButton {
+  background-color: #f44336;
+  color: white;
+}
+
+.unoButton:hover {
+  background-color: #da190b;
+}
+
+.playerStats {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.playerStatsList {
+  list-style-type: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.playerStatsItem {
+  background-color: #f0f0f0;
+  padding: 10px;
+  border-radius: 5px;
+  text-align: center;
+}
+
+.errorPopup {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #f44336;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  z-index: 1000;
+}
+
+.redCard {
+  background-color: #ffcccb;
+  color: #8b0000;
+}
+
+.blueCard {
+  background-color: #add8e6;
+  color: #00008b;
+}
+
+.greenCard {
+  background-color: #90ee90;
+  color: #006400;
+}
+
+.yellowCard {
+  background-color: #ffffe0;
+  color: #8b8000;
+}
+
+.wildCard {
+  background: linear-gradient(45deg, #ffcccb, #add8e6, #90ee90, #ffffe0);
+  color: #000000;
+}
+
+@media (max-width: 768px) {
+  .gameBoard {
+    padding: 10px;
+  }
+
+  .gameInfo {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .topCard {
+    width: 80px;
+    height: 120px;
+    font-size: 16px;
+  }
+
+  .card {
+    width: 60px;
+    height: 90px;
+    font-size: 12px;
+  }
+
+  .drawButton, .unoButton {
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .gameContainer {
+    padding: 10px;
+  }
+
+  .card {
+    width: 50px;
+    height: 75px;
+    font-size: 10px;
+  }
+
+  .topCard {
+    width: 70px;
+    height: 105px;
+    font-size: 14px;
+  }
+}
