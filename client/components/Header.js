@@ -1,4 +1,5 @@
 import { useRouter } from 'next/router';
+import styles from '../styles/Header.module.css';
 
 export default function Header() {
   const router = useRouter();
@@ -10,9 +11,14 @@ export default function Header() {
   };
 
   return (
-    <header>
-      <h2>Hello, {username}</h2>
-      <button onClick={handleExit}>Exit</button>
+    <header className={styles.header}>
+      <div className={styles.leftSection}>
+        <div className={styles.greeting}>Hello, {username}</div>
+      </div>
+      <h1 className={styles.title}>UNO GAME</h1>
+      <div className={styles.rightSection}>
+        <button className={styles.exitButton} onClick={handleExit}>EXIT</button>
+      </div>
     </header>
   );
 }

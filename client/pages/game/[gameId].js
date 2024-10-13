@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import socket, { connectSocket, joinGame, playCard, drawCard, sayUno, getGameState, listenForGameStateUpdates, stopListeningForGameStateUpdates } from '../../src/utils/socket';
 import styles from '../../styles/Game.module.css';
@@ -14,6 +14,7 @@ export default function Game() {
   const [loading, setLoading] = useState(true);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const maxRetries = 3;
+  const gameStateInterval = useRef(null);
 
   const updateGameState = useCallback((newGameState) => {
     console.log('Updating game state:', newGameState);
@@ -26,7 +27,13 @@ export default function Game() {
       console.warn('Player hand not found in game state');
     }
     setLoading(false);
-  }, []);
+
+    // Check for game over condition
+    if (newGameState.status === 'ended' && newGameState.winner) {
+      localStorage.setItem('winner', newGameState.winner);
+      router.push(`/game-over/${gameId}`);
+    }
+  }, [gameId, router]);
 
   const setupGame = useCallback(async () => {
     if (gameId && username) {
@@ -57,6 +64,17 @@ export default function Game() {
     }
   }, [gameId, username, updateGameState]);
 
+  const fetchGameState = useCallback(async () => {
+    if (gameId && username) {
+      try {
+        const updatedGameState = await getGameState(gameId, username);
+        updateGameState(updatedGameState);
+      } catch (error) {
+        console.error('Error fetching game state:', error);
+      }
+    }
+  }, [gameId, username, updateGameState]);
+
   useEffect(() => {
     console.log('NEXT_PUBLIC_SOCKET_URL:', process.env.NEXT_PUBLIC_SOCKET_URL);
     const storedUsername = localStorage.getItem('username');
@@ -70,6 +88,9 @@ export default function Game() {
     if (gameId && username) {
       setupGame();
       listenForGameStateUpdates(updateGameState);
+
+      // Set up interval to fetch game state every 5 seconds
+      gameStateInterval.current = setInterval(fetchGameState, 5000);
     }
 
     return () => {
@@ -77,9 +98,12 @@ export default function Game() {
         console.log(`Leaving game ${gameId}`);
         stopListeningForGameStateUpdates();
         socket.disconnect();
+        if (gameStateInterval.current) {
+          clearInterval(gameStateInterval.current);
+        }
       }
     };
-  }, [gameId, username, router, setupGame]);
+  }, [gameId, username, router, setupGame, fetchGameState]);
 
   useEffect(() => {
     if (error && connectionAttempts < maxRetries) {
@@ -139,6 +163,83 @@ export default function Game() {
 
   const isPlayerTurn = gameState && gameState.players[gameState.currentTurn].username === username;
 
+  const getCardSymbol = (card) => {
+    const [, value] = card.split('_');
+    switch (value) {
+      case 'skip': return '⊘';
+      case 'reverse': return '⇄';
+      case 'draw2': return '+2';
+      case 'wild': return '🌈';
+      case 'wild_draw4': return '+4';
+      default: return value;
+    }
+  };
+
+  // Update the calculatePlayerPositions function
+  const calculatePlayerPositions = (numPlayers) => {
+    const positions = [];
+    
+    if (numPlayers <= 3) {
+      // For 2-3 players, place them in a row at the top
+      for (let i = 0; i < numPlayers; i++) {
+        positions.push({
+          x: `${(i + 1) * 100 / (numPlayers + 1)}%`,
+          y: '0%',
+          transform: 'translateX(-50%)'
+        });
+      }
+    } else {
+      // For 4 or more players, use a semi-circle layout
+      const radius = 40;
+      const startAngle = -Math.PI / 2;
+      const angleStep = Math.PI / (numPlayers - 1);
+
+      for (let i = 0; i < numPlayers; i++) {
+        const angle = startAngle + i * angleStep;
+        const x = 50 + radius * Math.cos(angle);
+        const y = 50 + radius * Math.sin(angle);
+        positions.push({
+          x: `${x}%`,
+          y: `${y}%`,
+          transform: 'translate(-50%, -50%)'
+        });
+      }
+    }
+
+    return positions;
+  };
+
+  // Update the renderOtherPlayersHands function
+  const renderOtherPlayersHands = () => {
+    if (!gameState || !gameState.players) return null;
+
+    const otherPlayers = gameState.players.filter(player => player.username !== username);
+    const positions = calculatePlayerPositions(otherPlayers.length);
+
+    return otherPlayers.map((player, index) => {
+      const { x, y, transform } = positions[index];
+      const style = { left: x, top: y, transform };
+
+      return (
+        <div 
+          key={player.username} 
+          className={`${styles.otherPlayerHand} ${player.username === gameState.players[gameState.currentTurn].username ? styles.currentTurnHand : ''}`}
+          style={style}
+        >
+          <div className={styles.otherPlayerName}>{player.username}</div>
+          <div className={styles.otherPlayerCards}>
+            {Array(Math.min(7, player.handSize)).fill(0).map((_, cardIndex) => (
+              <div key={cardIndex} className={styles.otherPlayerCard}></div>
+            ))}
+          </div>
+          {player.handSize > 7 && (
+            <div className={styles.extraCards}>+{player.handSize - 7}</div>
+          )}
+        </div>
+      );
+    });
+  };
+
   if (loading) return (
     <div className={styles.gameContainer}>
       <p>Loading... Please wait while we set up the game.</p>
@@ -160,73 +261,89 @@ export default function Game() {
   return (
     <div className={styles.gameContainer}>
       <div className={styles.gameBoard}>
-        <h1>UNO Game</h1>
         <div className={styles.gameInfo}>
-          <p>Game ID: {gameId}</p>
-          <p>Current Turn: {gameState.players[gameState.currentTurn].username}</p>
-          <div className={`${styles.topCard} ${getCardColorClass(gameState.topCard)}`}>
-            <span className={styles.cardContent}>{gameState.topCard}</span>
+          <div className={styles.gameInfoHeader}>
+            <h3>Game Info</h3>
+            <div className={styles.gameId}>ID: {gameId}</div>
           </div>
-        </div>
-        {isPlayerTurn && (
-          <div className={styles.turnIndicator}>
-            It's your turn!
-          </div>
-        )}
-        <div className={styles.playerHandContainer}>
-          <h2>Your Hand</h2>
-          <div className={styles.playerHand}>
-            {playerHand && playerHand.length > 0 ? (
-              playerHand.map((card, index) => {
-                const isValid = isPlayerTurn && isValidPlay(card, gameState.topCard);
-                return (
-                  <button 
-                    key={index} 
-                    onClick={() => handlePlayCard(card)} 
-                    className={`${styles.card} ${getCardColorClass(card)} ${isValid ? styles.validCard : ''}`}
-                    disabled={!isPlayerTurn || !isValid}
-                  >
-                    <span className={styles.cardContent}>{card}</span>
-                  </button>
-                );
-              })
-            ) : (
-              <p>No cards in hand</p>
-            )}
-          </div>
-        </div>
-        <div className={styles.actionButtons}>
-          <button 
-            onClick={handleDrawCard} 
-            className={styles.drawButton}
-            disabled={!isPlayerTurn}
-          >
-            Draw Card
-          </button>
-          {showUnoButton && (
-            <button 
-              onClick={handleSayUno} 
-              className={styles.unoButton}
-              disabled={!isPlayerTurn}
-            >
-              Say UNO!
-            </button>
-          )}
-        </div>
-        <div className={styles.playerStats}>
-          <h3>Player Stats</h3>
-          <ul className={styles.playerStatsList}>
+          <div className={styles.playerStatsContainer}>
             {gameState.players.map((player, index) => (
-              <li 
+              <div 
                 key={index} 
                 className={`${styles.playerStatsItem} ${player.username === gameState.players[gameState.currentTurn].username ? styles.currentTurnPlayer : ''}`}
               >
-                {player.username}: {player.handSize} cards
-                {player.saidUno && ' (UNO!)'}
-                {player.username === gameState.players[gameState.currentTurn].username && ' (Current Turn)'}
-              </li>
+                <div className={styles.playerNameAndCards}>
+                  <span className={styles.playerName}>{player.username}</span>
+                  <span className={styles.playerCardCount}>({player.handSize})</span>
+                </div>
+                <div className={styles.playerDetails}>
+                  {player.saidUno && <span className={styles.unoIndicator}>UNO!</span>}
+                  {player.username === gameState.players[gameState.currentTurn].username && (
+                    <span className={styles.currentTurnIndicator}>Current Turn</span>
+                  )}
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
+        </div>
+        <div className={styles.gamePlayArea}>
+          <div className={styles.gameContent}>
+            <div className={styles.otherPlayersContainer}>
+              {renderOtherPlayersHands()}
+            </div>
+            <div className={styles.centralArea}>
+              <div className={styles.discardPile}>
+                <div className={`${styles.topCard} ${getCardColorClass(gameState.topCard)}`}>
+                  <div className={styles.topCardContent}>
+                    <span className={`${styles.cardCorner} ${styles.cardCornerTopLeft}`}>{getCardSymbol(gameState.topCard)}</span>
+                    <span className={styles.cardCenter}>{getCardSymbol(gameState.topCard)}</span>
+                    <span className={`${styles.cardCorner} ${styles.cardCornerBottomRight}`}>{getCardSymbol(gameState.topCard)}</span>
+                  </div>
+                </div>
+                <div 
+                  className={styles.drawPile}
+                  onClick={handleDrawCard}
+                  style={{ cursor: isPlayerTurn ? 'pointer' : 'not-allowed' }}
+                />
+              </div>
+            </div>
+            <div className={styles.currentPlayerHand}>
+              <div className={styles.actionButtons}>
+                {showUnoButton && (
+                  <button 
+                    onClick={handleSayUno} 
+                    className={styles.unoButton}
+                    disabled={!isPlayerTurn}
+                  >
+                    Say UNO!
+                  </button>
+                )}
+              </div>
+              <div className={styles.playerHand}>
+                {playerHand && playerHand.length > 0 ? (
+                  playerHand.map((card, index) => {
+                    const isValid = isPlayerTurn && isValidPlay(card, gameState.topCard);
+                    return (
+                      <button 
+                        key={index} 
+                        onClick={() => handlePlayCard(card)} 
+                        className={`${styles.card} ${getCardColorClass(card)} ${isValid ? styles.validCard : ''}`}
+                        disabled={!isPlayerTurn || !isValid}
+                      >
+                        <div className={styles.cardContent}>
+                          <span className={`${styles.cardCorner} ${styles.cardCornerTopLeft}`}>{getCardSymbol(card)}</span>
+                          <span className={styles.cardCenter}>{getCardSymbol(card)}</span>
+                          <span className={`${styles.cardCorner} ${styles.cardCornerBottomRight}`}>{getCardSymbol(card)}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p>No cards in hand</p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       {error && <div className={styles.errorPopup}>{error}</div>}

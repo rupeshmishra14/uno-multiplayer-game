@@ -59,6 +59,12 @@ app.post('/api/games/promote-admin', gameController.promoteToAdmin);
 // Add this near your other API routes
 app.get('/api/games/state', gameController.getGameState);
 
+// Add this near your other API routes
+app.post('/api/games/reset', gameController.resetGame);
+
+// Add this new route
+app.post('/api/games/draw-and-play', gameController.drawAndPlay);
+
 // After creating the io object
 app.set('io', io);
 

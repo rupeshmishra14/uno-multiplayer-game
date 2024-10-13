@@ -233,4 +233,82 @@ module.exports = (io, socket) => {
       callback({ error: 'Error getting game state' });
     }
   });
+
+  socket.on('resetGame', async ({ gameId }) => {
+    try {
+      const game = await Game.findOne({ gameId });
+      if (!game) {
+        socket.emit('error', 'Game not found');
+        return;
+      }
+
+      // Reset game state
+      game.status = 'lobby';
+      game.deck = shuffleDeck(generateDeck());
+      game.discardPile = [];
+      game.currentTurn = 0;
+      game.direction = 1;
+      game.winner = null;
+
+      // Reset player hands and ready status
+      game.players.forEach(player => {
+        player.hand = [];
+        player.isReady = false;
+      });
+
+      await game.save();
+
+      // Emit game reset event to all players in the game
+      io.to(gameId).emit('gameReset', { gameId });
+    } catch (error) {
+      console.error('Error resetting game:', error);
+      socket.emit('error', 'Error resetting game');
+    }
+  });
+
+  // Add this new socket event handler
+  socket.on('drawAndPlay', async ({ gameId, username, action }) => {
+    try {
+      const game = await Game.findOne({ gameId });
+      if (!game || game.status !== 'active') {
+        socket.emit('error', 'Invalid game');
+        return;
+      }
+
+      const playerIndex = game.players.findIndex(player => player.username === username);
+      if (playerIndex === -1 || playerIndex !== game.currentTurn) {
+        socket.emit('error', 'Not your turn');
+        return;
+      }
+
+      const player = game.players[playerIndex];
+
+      // Draw a card
+      if (game.deck.length === 0) {
+        game.deck = game.discardPile.slice(0, -1).sort(() => Math.random() - 0.5);
+        game.discardPile = [game.discardPile[game.discardPile.length - 1]];
+      }
+
+      const drawnCard = game.deck.pop();
+      const topCard = game.discardPile[game.discardPile.length - 1];
+
+      if (action === 'play' && isValidPlay(drawnCard, topCard)) {
+        // Play the drawn card
+        game.discardPile.push(drawnCard);
+        handleSpecialCard(game, drawnCard);
+      } else {
+        // Keep the drawn card
+        player.hand.push(drawnCard);
+      }
+
+      // Move to the next player's turn
+      game.currentTurn = (game.currentTurn + game.direction + game.players.length) % game.players.length;
+
+      await game.save();
+      await emitGameUpdate(gameId);
+    } catch (error) {
+      console.error('Error drawing and playing card:', error);
+      socket.emit('error', 'Error drawing and playing card');
+    }
+  });
 };

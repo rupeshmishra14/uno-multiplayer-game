@@ -156,6 +156,9 @@ exports.playCard = async (req, res) => {
     if (player.hand.length === 0) {
       game.status = 'ended';
       game.winner = username;
+      await game.save();
+      await emitGameStateUpdate(gameId, req.app.get('io'));
+      return res.status(200).json({ message: 'Game over', winner: username });
     }
 
     await game.save();
@@ -185,20 +188,26 @@ exports.drawCard = async (req, res) => {
 
     // Draw a card from the deck
     if (game.deck.length === 0) {
-      // Reshuffle the discard pile if the deck is empty
       game.deck = shuffleDeck(game.discardPile.slice(0, -1));
       game.discardPile = [game.discardPile[game.discardPile.length - 1]];
     }
 
     const drawnCard = game.deck.pop();
-    player.hand.push(drawnCard);
+    const topCard = game.discardPile[game.discardPile.length - 1];
 
-    // Move to the next player's turn
-    game.currentTurn = (game.currentTurn + game.direction + game.players.length) % game.players.length;
+    const canPlayDrawnCard = isValidPlay(drawnCard, topCard);
 
-    await game.save();
-
-    res.status(200).json({ message: 'Card drawn successfully', drawnCard });
+    if (canPlayDrawnCard) {
+      // If the drawn card can be played, don't add it to the player's hand yet
+      res.status(200).json({ message: 'Card drawn successfully', drawnCard, canPlayDrawnCard });
+    } else {
+      // If the drawn card can't be played, add it to the player's hand and move to the next turn
+      player.hand.push(drawnCard);
+      game.currentTurn = (game.currentTurn + game.direction + game.players.length) % game.players.length;
+      await game.save();
+      await emitGameStateUpdate(gameId, req.app.get('io'));
+      res.status(200).json({ message: 'Card drawn successfully', drawnCard, canPlayDrawnCard });
+    }
   } catch (error) {
     res.status(500).json({ message: 'Error drawing card', error: error.message });
   }
@@ -373,5 +382,88 @@ const emitGameStateUpdate = async (gameId, io) => {
       console.log(`Emitting game state to ${player.username}:`, gameState);
       io.to(player.socketId).emit('gameStateUpdate', gameState);
     });
+  }
+};
+
+// Add this function to reset the game
+exports.resetGame = async (req, res) => {
+  try {
+    const { gameId } = req.body;
+    const game = await Game.findOne({ gameId });
+
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
+
+    // Reset game state
+    game.status = 'lobby';
+    game.deck = shuffleDeck(generateDeck());
+    game.discardPile = [];
+    game.currentTurn = 0;
+    game.direction = 1;
+    game.winner = null;
+
+    // Reset player hands and ready status
+    game.players.forEach(player => {
+      player.hand = [];
+      player.isReady = false;
+    });
+
+    await game.save();
+
+    // Emit a game reset event to all players
+    req.app.get('io').to(gameId).emit('gameReset', { gameId });
+
+    res.status(200).json({ message: 'Game reset successfully' });
+  } catch (error) {
+    console.error('Error resetting game:', error);
+    res.status(500).json({ message: 'Error resetting game', error: error.message });
+  }
+};
+
+// Add this new function at the end of the file
+exports.drawAndPlay = async (req, res) => {
+  try {
+    const { gameId, username, action } = req.body;
+    const game = await Game.findOne({ gameId });
+
+    if (!game || game.status !== 'active') {
+      return res.status(400).json({ message: 'Invalid game' });
+    }
+
+    const playerIndex = game.players.findIndex(player => player.username === username);
+    if (playerIndex === -1 || playerIndex !== game.currentTurn) {
+      return res.status(403).json({ message: 'Not your turn' });
+    }
+
+    const player = game.players[playerIndex];
+
+    // Draw a card
+    if (game.deck.length === 0) {
+      game.deck = shuffleDeck(game.discardPile.slice(0, -1));
+      game.discardPile = [game.discardPile[game.discardPile.length - 1]];
+    }
+
+    const drawnCard = game.deck.pop();
+    const topCard = game.discardPile[game.discardPile.length - 1];
+
+    if (action === 'play' && isValidPlay(drawnCard, topCard)) {
+      // Play the drawn card
+      game.discardPile.push(drawnCard);
+      handleSpecialCard(game, drawnCard);
+    } else {
+      // Keep the drawn card
+      player.hand.push(drawnCard);
+    }
+
+    // Move to the next player's turn
+    game.currentTurn = (game.currentTurn + game.direction + game.players.length) % game.players.length;
+
+    await game.save();
+    await emitGameStateUpdate(gameId, req.app.get('io'));
+
+    res.status(200).json({ message: 'Card drawn and action taken successfully', drawnCard });
+  } catch (error) {
+    res.status(500).json({ message: 'Error drawing and playing card', error: error.message });
   }
 };
